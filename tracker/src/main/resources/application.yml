@@ -27,8 +27,8 @@ spring:
           issuer-uri: ${AUTH_SERVER_URL:http://localhost:8085}/realms/period-tracker
           jwk-set-uri: ${AUTH_SERVER_URL:http://localhost:8085}/realms/period-tracker/protocol/openid-connect/certs
 
-  keycloak:
-    server-url: ${KEYCLOAK_URL:http://localhost:8085}
-    realm: ${KEYCLOAK_REALM:period-tracker}
-    client-id: ${KEYCLOAK_CLIENT_ID:tracker-app}
-    client-secret: ${KEYCLOAK_CLIENT_SECRET}
+keycloak:
+  server-url: ${KEYCLOAK_URL:http://localhost:8085}
+  realm: ${KEYCLOAK_REALM:period-tracker}
+  admin-user: ${KC_ADMIN_USER:admin}
+  admin-password: ${KC_ADMIN_PASS:admin}
