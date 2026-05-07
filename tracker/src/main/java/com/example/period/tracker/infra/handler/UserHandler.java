@@ -7,9 +7,9 @@ import com.example.period.tracker.domain.exception.UserNotFoundException;
 import com.example.period.tracker.mapper.UserMapper;
 import com.example.period.tracker.producer.UserEventProducer;
 import com.example.period.tracker.respository.UserRepository;
+import com.example.period.tracker.service.KeycloakService;
 import lombok.RequiredArgsConstructor;
-import org.keycloak.admin.client.Keycloak;
-import org.springframework.boot.autoconfigure.rsocket.RSocketProperties;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -19,23 +19,36 @@ import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 
-
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class  UserHandler {
     private final UserRepository userRepository;
     private final UserEventProducer userEventProducer;
-
-    public Mono<ServerResponse> createUser(ServerRequest serverRequest){
-        return serverRequest.bodyToMono(UserRequestDTO.class) //Extrae el DTO del sobre HTTP
-                .map(UserMapper::toEntity) //Transforma DTO a entidad
-                .flatMap(userRepository::save) //Guarda en BD(Asincrono)
-                //Usamos el doOnNext para lanzar el evento sin afectar la respuesta HTTP.
-                .doOnNext(user -> userEventProducer.emitUserMessage(user.getId(),user.getAverageCycleLength(),user.getUsername()))
-                .map(UserMapper::toDto) // Transforma entidad a dto
-                .flatMap(dto -> ServerResponse
-                        .status(HttpStatus.CREATED)
-                .bodyValue(dto)); //Crea el paquete de la respuesta 201
+    private final KeycloakService keycloakService;
+    public Mono<ServerResponse> createUser(ServerRequest serverRequest) {
+        return serverRequest.bodyToMono(UserRequestDTO.class)
+                .flatMap(userRequestDTO ->
+                        // Ejecutamos Keycloak primero
+                        keycloakService.createInKeycloak(userRequestDTO)
+                                .then(Mono.defer(() -> userRepository.save(UserMapper.toEntity(userRequestDTO))))
+                                .flatMap(savedUser ->
+                                        // Emitimos a Kafka y retornamos el usuario guardado
+                                        userEventProducer.emitUserMessage(
+                                                savedUser.getId(),
+                                                savedUser.getAverageCycleLength(),
+                                                savedUser.getUsername()
+                                        ).thenReturn(savedUser)
+                                )
+                )
+                // Aquí el flujo ya es claramente Mono<User>, ahora lo pasamos a ServerResponse
+                .map(UserMapper::toDto)
+                .flatMap(dto -> ServerResponse.status(HttpStatus.CREATED).bodyValue(dto))
+                .onErrorResume(e -> {
+                    log.error("Fallo en el proceso de registro: ", e); // Ahora 'log' es de Slf4j
+                    return ServerResponse.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .bodyValue(new ErrorResponse("REGISTRATION_FAILED", e.getMessage(), LocalDateTime.now()));
+                });
     }
     public Mono<ServerResponse> getAllUsers(ServerRequest serverRequest){
         return ServerResponse.ok()
@@ -53,8 +66,9 @@ public class  UserHandler {
                 .flatMap(dto-> ServerResponse.ok()
                         .contentType(MediaType.APPLICATION_JSON)
                         .bodyValue(dto))
-                .onErrorResume(IllegalAccessError.class,e ->
+                .onErrorResume(IllegalArgumentException.class,e ->
                         ServerResponse.badRequest().bodyValue(new ErrorResponse("BAD_REQUEST",e.getMessage(), LocalDateTime.now())));
 
     }
+
 }

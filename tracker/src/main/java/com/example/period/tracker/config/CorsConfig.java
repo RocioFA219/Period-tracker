@@ -6,7 +6,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.reactive.CorsWebFilter;
 import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
-import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 public class CorsConfig {
@@ -15,14 +15,25 @@ public class CorsConfig {
     public CorsWebFilter corsWebFilter() {
         CorsConfiguration corsConfig = new CorsConfiguration();
 
-        // El puerto de tu Front (Vite)
-        corsConfig.setAllowedOrigins(Arrays.asList("http://localhost:5173"));
-        corsConfig.setAllowedOrigins(Arrays.asList("http://localhost:5174"));
+        // Lista de orígenes permitidos (frontends de Vite)
+        // Usamos una sola llamada para evitar sobrescribir la lista
+        corsConfig.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://localhost:5174"
+        ));
+
         corsConfig.setMaxAge(3600L);
-        corsConfig.addAllowedMethod("*"); // Permitimos todo: GET, POST, OPTIONS...
-        corsConfig.addAllowedHeader("*"); // Permitimos todas las cabeceras
+
+        // Permitimos todos los métodos: GET, POST, PUT, DELETE, OPTIONS...
+        corsConfig.setAllowedMethods(List.of("*"));
+
+        // Permitimos todas las cabeceras incluyendo Authorization
+        corsConfig.setAllowedHeaders(List.of("*"));
+
+        // Permitimos enviar cookies y credenciales
         corsConfig.setAllowCredentials(true);
 
+        // Registramos la configuración para todas las rutas
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", corsConfig);
 
